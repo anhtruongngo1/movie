@@ -1,0 +1,215 @@
+--Câu 1:
+
+
+
+create proc SP_Insert_KhachHang
+	@MaCb varchar(10),
+	@SoCmnd varchar(10),
+	@TenKH nvarchar(30),
+	@DiaChi nvarchar(20),
+	@TaiKhoan varchar(20),
+	@Ngaydc date,
+	@GhiChu text 
+	as
+	begin
+		declare @SoGhe int
+		declare @SoGheDat int
+		set @SoGhe = (select SlGhe from Chuyen_Bay where MaCb = @MaCb)
+		set @SoGheDat = (select SlGheDat from Chuyen_Bay where MaCb = @MaCb)
+		if not exists (select * from Chuyen_Bay where MaCb = @MaCb)
+			begin 
+				print (N'Chuyến bay không tồn tại.')
+			end
+		else
+			begin
+				if(@SoGhe - @SoGheDat <= 0)
+					begin 
+						print(N'Chuyến bay hết chổ.')
+					end
+				else
+					begin
+						if exists(select * from Khach_Hang where SoCmnd = @SoCmnd)
+							begin
+								insert into Chuyen_Bay_Khach
+								values(@MaCb, @SoCmnd, @Ngaydc, @GhiChu)
+								update Chuyen_Bay
+								set SlGheDat = SlGheDat + 1
+								where MaCb = @MaCb
+								print(N'Đặt chổ thành công.')
+							end
+						else
+							begin
+								insert into Khach_Hang
+								values(@SoCmnd, @TenKH, @DiaChi, @TaiKhoan)
+								insert into Chuyen_Bay_Khach
+								values(@MaCb, @SoCmnd, @Ngaydc, @GhiChu)
+								update Chuyen_Bay
+								set SlGheDat = SlGheDat + 1
+								where MaCb = @MaCb
+								print(N'Đặt chổ thành công.')
+							end
+					end
+			end
+	end
+
+    Execute SP_Insert_KhachHang 
+	@MaCb = '002',
+	@SoCmnd = '122',
+	@TenKH = N'Nguyễn Trần Hoàng Thắng',
+	@DiaChi = N'Đà Nẵng',
+	@TaiKhoan = '7777777',
+	@Ngaydc = '2022/3/05',
+	@GhiChu = N'Không có'
+
+	select * from Khach_Hang
+	select * from Chuyen_Bay_Khach
+	select * from Chuyen_Bay
+
+
+
+
+--Câu 2
+
+alter proc SP_Delete_KhachHang2
+	@MaCb varchar(10),
+	@SoCmnd varchar(10),
+	@TenKH nvarchar(30),
+	@Ngaydc date
+	as
+	begin
+		declare @SoGhe int
+		declare @SoGheDat int
+		set @SoGhe = (select SlGhe from Chuyen_Bay where MaCb = @MaCb)
+		set @SoGheDat = (select SlGheDat from Chuyen_Bay where MaCb = @MaCb)
+		if not exists (select * from Chuyen_Bay where MaCb = @MaCb)
+			begin 
+				print(N'Chuyến bay không tồn tại.')
+			end
+		else
+			begin
+					if exists(select * from Khach_Hang where SoCmnd = @SoCmnd)
+						if(@SoGheDat < 2 and @SoGheDat > 0)
+							begin
+								delete Khach_Hang
+								from Chuyen_Bay_Khach CBK  inner join Khach_hang KH
+								on KH.SoCmnd = CBK.SoCmnd 
+								where  KH.SoCmnd = @SoCmnd
+								
+						
+								delete Chuyen_Bay_Khach
+								where SoCmnd = @SoCmnd and Macb = @MaCb
+
+								update Chuyen_Bay
+								set SlGheDat = SlGheDat - 1
+								where MaCb = @MaCb
+							end
+						else
+							begin
+								update Chuyen_Bay
+								set SlGheDat = SlGheDat - 1
+								where MaCb = @MaCb
+							end
+					else
+						print (N'Số cmnd không tồn tại.')
+			end
+	end
+
+	Execute SP_Delete_KhachHang2
+	@MaCb = '003',
+	@SoCmnd = '5456456456',
+	@TenKH = N'Nguyễn Trần Hoàng Thắng',
+	@Ngaydc = '2022/3/15'
+	select * from Khach_Hang
+	select * from Chuyen_Bay_Khach
+	select * from Chuyen_Bay
+
+--Câu 4: Kiểm tra mức cô lập khi khách hàng đặt chỗ và nhân viên update thông tin chuyến bay
+--Đặt chỗ 
+begin transaction 
+Execute SP_Insert_KhachHang 
+    @MaCb = '002',
+    @SoCmnd = '123123',
+    @TenKH = N'Nguyễn Trần Hoàng Thắng',
+    @DiaChi = N'Đà Nẵng',
+    @TaiKhoan = '777',
+    @Ngaydc = '2022/3/15',
+    @GhiChu = N'Không có'
+waitfor delay '00:00:01'
+commit transaction 
+
+--Cập nhật thông tin chuyến bay
+begin transaction
+set transaction isolation level Repeatable read
+update dbo.Chuyen_Bay
+set SlGheDat = 20
+where MaCb = '002'
+print N'Cập nhật thông tin chuyến bay thành công'
+commit transaction 
+select * from Khach_Hang
+select * from Chuyen_Bay_Khach
+select * from Chuyen_Bay
+
+--Cập nhật thông tin hết chỗ 
+--KQ1 nếu ta chạy cùng lúc thì sẽ đặt được chỗ cho khách
+--KQ2 nếu ta chạy đặt chổ trước thì vẫn đặt chỗ được cho khách
+--KQ3 nếu ta chạy cập nhật thông tin trước thì khách đặt chỗ không được
+
+--Câu 5: Viết giao dịch kiểm tra mức cô lập của giao dịch khi khách hàng hủy chỗ
+-- và nhân viên chèn thêm chuyến bay
+
+--Nhân viên chèn thên chuyến bay và thông tin chuyến bay
+begin transaction
+--set transaction isolation level repeatable read
+insert into Chuyen_Bay
+        values    ('004','2022/3/29',N'Đà Nẵng', N'Hà Nội',0,10)
+Execute SP_Insert_KhachHang 
+    @MaCb = '004',
+    @SoCmnd = '890213',
+    @TenKH = N'Nguyễn Trần Hoàng Thắng',
+    @DiaChi = N'Đà Nẵng',
+    @TaiKhoan = '888888',
+    @Ngaydc = '2022/3/15',
+    @GhiChu = N'Không có'
+print N'Cập nhật thông tin chuyến bay thành công'
+--waitfor delay '00:00:10'
+commit transaction 
+
+--Khách hàng hủy chỗ
+begin transaction 
+--set transaction isolation level serializable 
+Execute SP_Delete_KhachHang2
+    @MaCb = '004',
+    @SoCmnd = '890213',
+    @Ngaydc = '2022/3/15'
+waitfor delay '00:00:05'
+commit transaction 
+
+
+
+    delete Chuyen_Bay_Khach
+    delete Khach_Hang
+    delete Chuyen_Bay
+    where MaCb = '004'
+select * from Khach_Hang
+select * from Chuyen_Bay_Khach
+select * from Chuyen_Bay
+
+--Câu 6:    Nhân viên 1: Tìm khách hàng đặt chuyến bay
+--            Nhân Viên 2: Xóa thông tin MaCB + MaKH
+
+--Xóa thông tin Chuyến bay khách
+begin transaction 
+--set transaction isolation level serializable 
+    Execute SP_Delete_KhachHang2
+    @MaCb = '004',
+    @SoCmnd = '890213',
+    @Ngaydc = '2022/3/15'
+commit transaction 
+
+--Tìm khách đặt chuyến bay
+begin transaction 
+set transaction isolation level Serializable 
+select * from Khach_Hang,Chuyen_Bay_Khach
+where MaCB = '004'
+waitfor delay '00:00:10'
+commit transaction
